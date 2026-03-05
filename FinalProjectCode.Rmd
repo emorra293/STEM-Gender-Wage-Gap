@@ -1,0 +1,776 @@
+---
+title: "Final Project Code"
+author: "E. Morra, S. Miller"
+date: "2023-11-30"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+Libraries 
+```{r}
+library(ggplot2)
+library(tidyverse)
+library(dplyr)
+library(tidymodels)
+library(gghighlight)
+library(knitr)
+set.seed(1234)
+```
+
+San Francisco Data Set
+Data Set has "San Francisco city employee salary data(gender column included)"
+```{r}
+#read in file
+SF_dataset <- read.csv("SF_salary_data_gender.csv")
+#data clean
+SF_dataset <- SF_dataset[, !(colnames(SF_dataset) %in% c("Benefits", "TotalPayBenefits", "Status", "X"))]
+SF_dataset <- SF_dataset[SF_dataset$gender != "", ]
+SFmales <- sum(SF_dataset$gender == "m")
+SFfemales <- sum(SF_dataset$gender == "f")
+print(colnames(SF_dataset))
+print(paste("The amount of males in the data set is is:", SFmales))
+print(paste("The amount of females in the data set is is:", SFfemales))
+```
+Analyze and visualize cleaned San Francisco Data Set Summary
+```{r}
+options(scipen = 600000)
+ggplot(SF_dataset, aes(x = gender, y = TotalPay, fill = gender)) +
+  geom_boxplot() +
+  labs(title = "Total Pay by Gender in San Francisco",
+       x = "Gender",
+       y = "Total Pay")
+```
+
+```{r}
+mean_totalpay_f<- mean(SF_dataset$TotalPay[SF_dataset$gender == "f"], na.rm = TRUE)
+mean_totalpay_f<- round(mean_totalpay_f, 2)
+
+mean_totalpay_m<- mean(SF_dataset$TotalPay[SF_dataset$gender == "m"], na.rm = TRUE)
+mean_totalpay_m<- round(mean_totalpay_m, 2)
+
+print(paste("The mean total pay for females is:", mean_totalpay_f))
+print(paste("The mean total pay for males is:", mean_totalpay_m))
+
+max_totalpay_f<- max(SF_dataset$TotalPay[SF_dataset$gender == "f"], na.rm = TRUE)
+max_totalpay_f<- round(max_totalpay_f, 2)
+
+max_totalpay_m<- max(SF_dataset$TotalPay[SF_dataset$gender == "m"], na.rm = TRUE)
+max_totalpay_m<- round(max_totalpay_m, 2)
+
+print(paste("The maximum total pay for females is:", max_totalpay_f))
+print(paste("The maximum total pay for males is:", max_totalpay_m))
+
+```
+
+```{r}
+ggplot(SF_dataset, aes(x = Year, y = TotalPay, fill = gender)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Histogram of Total Pay by Gender and Year",
+       x = "Total Pay",
+       y = "year")
+```
+
+
+Texas Government Salary Data Set
+```{r}
+#read in file
+texas_gov <- read.csv("texas_salaries.csv")
+#data clean
+remove_cols <- c("AGY", "MI", "CLASS.CODE", "STATE.NUMBER", "duplicated",
+                 "multiple_full_time_jobs", "combined_multiple_jobs", "summed_annual_salary",
+                 "hide_from_search")
+texas_gov<- texas_gov[, !(names(texas_gov) %in% remove_cols)]
+
+texas_gov <- texas_gov[complete.cases(texas_gov), ]
+
+print(unique(texas_gov$GENDER))
+texasmales <- sum(texas_gov$GENDER == "MALE           ")
+texasfemales <- sum(texas_gov$GENDER == "FEMALE         ")
+texas_gov <- na.omit(texas_gov)
+
+print(colnames(texas_gov))
+print(paste("The amount of males in the data set is is:", texasmales))
+print(paste("The amount of females in the data set is is:", texasfemales))
+```
+
+```{r}
+ggplot(texas_gov, aes(x = ETHNICITY, y = ANNUAL, fill = GENDER)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Annual Salaries by Gender and Ethnicity in the Texas Government",
+       x = "Ethnicity",
+       y = "Annual Salary")
+```
+Multiple Linear Regression
+```{r}
+print(unique(texas_gov$GENDER))
+print(unique(texas_gov$ETHNICITY))
+texas_gov$gender_num <- as.integer(factor(texas_gov$GENDER, levels = c("MALE           ", "FEMALE         ")))
+texas_gov$ethnicity_num <- as.integer(factor(texas_gov$ETHNICITY, levels = c("WHITE          ", "BLACK          ", "HISPANIC       ", "OTHER          ", "AM INDIAN      ", "ASIAN          ")))
+
+texas_annual <- lm(ANNUAL ~ gender_num + ethnicity_num, texas_gov)
+names(texas_annual)
+coefficients(texas_annual)
+summary(texas_annual)
+```
+
+Testing / training - see lab 10
+
+- Create an initial split
+
+```{r}
+tex_tt <- texas_gov[, -(1:4)]
+tex_tt <- tex_tt[, -(4:7)]
+tex_tt <- tex_tt[, -(5:6)]
+# take away unneccesary vars
+set.seed(1122)
+texas_split <- initial_split(tex_tt) # prop = 3/4 by default
+```
+
+- Save training data
+```{r}
+texas_train <- training(texas_split)
+dim(texas_train)
+```
+
+- Save testing data
+```{r}
+texas_test  <- testing(texas_split)
+dim(texas_test)
+```
+##### Specify model
+
+```{r}
+texas_mod <- linear_reg() %>%
+  set_engine("lm")
+
+texas_mod
+```
+##### Build recipe
+
+
+```{r}
+texas_rec <- recipe(ANNUAL ~ ., data = texas_train) %>%
+  # remove zero variance predictors
+  step_zv(all_predictors())
+```
+
+```{r}
+texas_rec
+```
+##### Build workflow
+
+```{r}
+texas_wflow <- workflow() %>%
+  add_model(texas_mod) %>%
+  add_recipe(texas_rec)
+```
+
+```{r}
+texas_wflow
+```
+##### Fit model
+
+
+```{r}
+texas_fit <- texas_wflow %>%
+  fit(data = texas_train)
+```
+
+
+```{r}
+tidy(texas_fit) %>%
+  print(n = 12)
+```
+
+#### Evaluate model
+
+
+
+##### Make predictions for training data
+
+```{r}
+texas_train_pred <- predict(texas_fit, texas_train) %>%
+  bind_cols(texas_train %>% select(ANNUAL, GENDER))
+
+texas_train_pred
+```
+##### R-squared
+
+Percentage of variability in salary explained by the model
+
+```{r}
+rsq(texas_train_pred, truth = ANNUAL, estimate = .pred)
+```
+
+
+
+```{r}
+rmse(texas_train_pred, truth = ANNUAL, estimate = .pred)
+```
+
+
+Are models with high or low RMSE are more preferable?
+
+##### Interpreting RMSE
+
+
+Is this RMSE considered low or high?
+
+```{r}
+texas_train %>%
+  summarise(min = min(ANNUAL), max = max(ANNUAL)) 
+```
+
+
+
+##### Make predictions for testing data
+
+```{r}
+texas_test_pred <- predict(texas_fit, texas_test) %>%
+  bind_cols(texas_test %>% select(ANNUAL, GENDER))
+
+texas_test_pred
+```
+
+
+
+##### Evaluate performance on testing data
+
+- RMSE of model fit to testing data
+
+```{r}
+rmse(texas_test_pred, truth = ANNUAL, estimate = .pred)
+```
+
+- $R^2$ of model fit to testing data
+
+```{r}
+rsq(texas_test_pred, truth = ANNUAL, estimate = .pred)
+```
+
+
+
+##### Training vs. testing
+
+
+
+```{r echo=FALSE}
+rmse_train_texas <- rmse(texas_train_pred, truth = ANNUAL, estimate = .pred) %>% 
+  pull(.estimate) %>%
+  round(3)
+
+rsq_train_texas <- rsq(texas_train_pred, truth = ANNUAL, estimate = .pred) %>% 
+  pull(.estimate) %>%
+  round(3)
+
+rmse_test_texas <- rmse(texas_test_pred, truth = ANNUAL, estimate = .pred) %>% 
+  pull(.estimate) %>%
+  round(3)
+
+rsq_test_texas <- rsq(texas_test_pred, truth = ANNUAL, estimate = .pred) %>% 
+  pull(.estimate) %>%
+  round(3)
+
+tibble(
+  data      = c(rep("train", 2), rep("test", 2)),
+  estimate  = c(rmse_train_texas, rsq_train_texas, rmse_test_texas, rsq_test_texas),
+  metric    = c("RMSE", "R-squared", "RMSE", "R-squared")
+) %>%
+  pivot_wider(names_from = data, values_from = estimate) %>%
+  bind_cols(comparison = c("RMSE lower for training", "R-squared higher for training")) %>%
+  kable()
+```
+
+
+
+
+
+
+
+IT Specialists Data Set
+## Read in data set 
+```{r}
+it_specialists <- read.csv("Salaries-of-IT-specialists.csv")
+
+names(it_specialists)[5] <- "Years of Experience"
+names(it_specialists)[6] <- "Annual Salary"
+names(it_specialists)[10] <- "Employment Type"
+names(it_specialists)[11] <- "Number of Projects"
+names(it_specialists)[12] <- "Job Satisfaction"
+
+it <- subset(it_specialists, select = -X)
+its <- subset(it, select = -ID)
+
+its <- its[1:218, ]
+
+print(unique(its$Gender))
+itsmales <- sum(its$Gender == "Male")
+itsfemales <- sum(its$Gender == "Female")
+print(paste("The amount of males in the data set is is:", itsmales))
+print(paste("The amount of females in the data set is is:", itsfemales))
+```
+
+## Histogram for male and female within each continent
+```{r}
+ggplot(its, aes(x = Continent, y = `Annual Salary`, fill = Gender)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Annual Salary of Genders For Each Continent",
+       x = "Continent",
+       y = "Salary",
+       fill = "Gender") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_fill_discrete(name = "Gender")
+```
+
+
+## Multiple linear regression using columns as predictors for salary 
+```{r}
+its$Education_numeric <- as.integer(factor(its$Education, levels = c("None", "Bachelor's", "Master's")))
+its$Gender_numeric <- as.integer(factor(its$Gender, levels = c("Male", "Female")))
+
+salaries <- lm(`Annual Salary` ~ `Years of Experience`+ Gender_numeric + Age + Education_numeric, its)
+names(salaries)
+coefficients(salaries)
+summary(salaries)
+```
+Testing / training - see lab 10
+
+- Create an initial split
+
+```{r}
+set.seed(1122)
+its_split <- initial_split(its) # prop = 3/4 by default
+```
+
+- Save training data
+```{r}
+its_train <- training(its_split)
+dim(its_train)
+```
+
+- Save testing data
+```{r}
+its_test  <- testing(its_split)
+dim(its_test)
+```
+##### Specify model
+
+```{r}
+its_mod <- linear_reg() %>%
+  set_engine("lm")
+
+its_mod
+```
+##### Build recipe
+
+
+```{r}
+its_rec <- recipe(`Annual Salary` ~ ., data = its_train) %>%
+  # remove zero variance predictors
+  step_zv(all_predictors())
+```
+
+```{r}
+its_rec
+```
+##### Build workflow
+
+```{r}
+its_wflow <- workflow() %>%
+  add_model(its_mod) %>%
+  add_recipe(its_rec)
+```
+
+```{r}
+its_wflow
+```
+##### Fit model
+
+
+```{r}
+its_fit <- its_wflow %>%
+  fit(data = its_train)
+```
+
+
+```{r}
+tidy(its_fit) %>%
+  print(n = 12)
+```
+
+#### Evaluate model
+
+
+
+##### Make predictions for training data
+
+```{r}
+its_train_pred <- predict(its_fit, its_train) %>%
+  bind_cols(its_train %>% select(`Annual Salary`, Gender))
+
+its_train_pred
+```
+##### R-squared
+
+Percentage of variability in salary explained by the model
+
+```{r}
+rsq(its_train_pred, truth = `Annual Salary`, estimate = .pred)
+```
+
+
+
+```{r}
+rmse(its_train_pred, truth = `Annual Salary`, estimate = .pred)
+```
+
+
+Are models with high or low RMSE are more preferable?
+
+##### Interpreting RMSE
+
+
+Is this RMSE considered low or high?
+
+
+```{r}
+its_train %>%
+  summarise(min = min(`Annual Salary`), max = max(`Annual Salary`)) 
+```
+
+
+
+##### Make predictions for testing data
+
+```{r}
+its_test_pred <- predict(its_fit, its_test) %>%
+  bind_cols(its_test %>% select(`Annual Salary`, Gender))
+
+its_test_pred
+```
+
+
+
+##### Evaluate performance on testing data
+
+- RMSE of model fit to testing data
+
+```{r}
+rmse(its_test_pred, truth =`Annual Salary`, estimate = .pred)
+```
+
+- $R^2$ of model fit to testing data
+
+```{r}
+rsq(its_test_pred, truth = `Annual Salary`, estimate = .pred)
+```
+
+
+
+##### Training vs. testing
+
+
+
+```{r echo=FALSE}
+rmse_train_its <- rmse(its_train_pred, truth = `Annual Salary`, estimate = .pred) %>% 
+  pull(.estimate) %>%
+  round(3)
+
+rsq_train_its <- rsq(its_train_pred, truth = `Annual Salary`, estimate = .pred) %>% 
+  pull(.estimate) %>%
+  round(3)
+
+rmse_test_its <- rmse(its_test_pred, truth = `Annual Salary`, estimate = .pred) %>% 
+  pull(.estimate) %>%
+  round(3)
+
+rsq_test_its <- rsq(its_test_pred, truth = `Annual Salary`, estimate = .pred) %>% 
+  pull(.estimate) %>%
+  round(3)
+
+tibble(
+  data      = c(rep("train", 2), rep("test", 2)),
+  estimate  = c(rmse_train_its, rsq_train_its, rmse_test_its, rsq_test_its),
+  metric    = c("RMSE", "R-squared", "RMSE", "R-squared")
+) %>%
+  pivot_wider(names_from = data, values_from = estimate) %>%
+  bind_cols(comparison = c("RMSE lower for training", "R-squared higher for training")) %>%
+  kable()
+```
+ 
+ 
+ ## ^ taken from lab 10** 
+ 
+ 
+ White House Data Set
+ 
+```{r}
+white_house <- read.csv("wh_staff_dataset.csv")
+glimpse(white_house)
+```
+ 
+ 
+ 
+```{r}
+# remove NAs to check for max salary for box plot axis 
+colSums(is.na(white_house))
+wh <- na.omit(white_house)
+colSums(is.na(wh))
+
+whhs <- wh[wh$salary != 0, ]
+
+max(whhs$salary)
+
+# remove data with blank gender entry for boxplot 
+print(unique(whhs$gender))
+
+wh2 <- whhs[whhs$gender != "", ]
+
+print(unique(wh2$gender))
+whmales <- sum(wh2$gender == "Male")
+whfemales <- sum(wh2$gender == "Female")
+print(paste("The amount of males in the data set is is:", whmales))
+print(paste("The amount of females in the data set is is:", whfemales))
+
+options(scipen = 250000)
+ggplot(wh2, aes(x = gender, y = salary, fill = gender)) +
+  geom_boxplot() +
+  labs(title = "Salary Depending on Gender",
+       y = "Salary",
+       x = "Gender") 
+```
+
+
+
+```{r}
+mean_salaries <- aggregate(salary ~ gender, data = wh2, FUN = mean)
+
+mean_salaries
+
+median_salaries <- aggregate(salary ~ gender, data = wh2, FUN = median)
+
+median_salaries
+
+```
+
+
+
+# line graph for male and female within each year
+```{r}
+ggplot(wh2, aes(x = year, y = salary, color = gender)) +
+  geom_line() +
+  labs(title = "Annual Salary Each Year for Males and Females",
+       x = "Year",
+       y = "Annual Salary",
+       color = "Gender") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_color_discrete(name = "Gender")
+```
+
+
+
+```{r}
+# max salary male or female 
+max_row <- wh2[which.max(wh2$salary), ]
+max_row
+
+```
+
+```{r}
+print(unique(wh$status))
+print(unique(wh$pay_basis))
+
+# changing categorical vars 
+
+wh2$gender_num <- as.integer(factor(wh2$gender, levels = c("Male", "Female")))
+wh2$status_num <- as.integer(factor(wh2$status, levels = c("Employee", "Detailee", "Employee (part-time)")))
+wh2$pay_num <- as.integer(factor(wh2$pay_basis, levels = c("Per Annum", "Per Diem")))
+
+# multiple linear regression 
+
+salaries2 <- lm(salary ~ gender_num + year + pay_num + status_num, wh2)
+names(salaries2)
+coefficients(salaries2)
+summary(salaries2)
+
+```
+
+
+
+Testing / training - see lab 10
+
+- Create an initial split
+
+```{r}
+wh_tt <- wh2[, -(1:2)]
+wh_tt <- wh_tt[, -(5:8)]
+# take away names, positions (too many to count), year, and num cat vars
+set.seed(1122)
+wh_split <- initial_split(wh_tt) # prop = 3/4 by default
+```
+
+- Save training data
+```{r}
+wh_train <- training(wh_split)
+dim(wh_train)
+```
+
+- Save testing data
+```{r}
+wh_test  <- testing(wh_split)
+dim(wh_test)
+```
+##### Specify model
+
+```{r}
+wh_mod <- linear_reg() %>%
+  set_engine("lm")
+
+wh_mod
+```
+##### Build recipe
+
+
+```{r}
+wh_rec <- recipe(salary ~ ., data = wh_train) %>%
+  # remove zero variance predictors
+  step_zv(all_predictors())
+```
+
+```{r}
+wh_rec
+```
+##### Build workflow
+
+```{r}
+wh_wflow <- workflow() %>%
+  add_model(wh_mod) %>%
+  add_recipe(wh_rec)
+```
+
+```{r}
+wh_wflow
+```
+##### Fit model
+
+
+```{r}
+wh_fit <- wh_wflow %>%
+  fit(data = wh_train)
+```
+
+
+```{r}
+tidy(wh_fit) %>%
+  print(n = 12)
+```
+
+#### Evaluate model
+
+
+
+##### Make predictions for training data
+
+```{r}
+wh_train_pred <- predict(wh_fit, wh_train) %>%
+  bind_cols(wh_train %>% select(salary, gender))
+
+wh_train_pred
+```
+##### R-squared
+
+Percentage of variability in salary explained by the model
+
+```{r}
+rsq(wh_train_pred, truth = salary, estimate = .pred)
+```
+
+
+
+```{r rmse-train}
+rmse(wh_train_pred, truth = salary, estimate = .pred)
+```
+
+
+Are models with high or low RMSE are more preferable?
+
+##### Interpreting RMSE
+
+
+Is this RMSE considered low or high?
+
+
+```{r ref.label="rmse-train"}
+```
+
+
+
+```{r}
+wh_train %>%
+  summarise(min = min(salary), max = max(salary)) 
+```
+
+
+
+##### Make predictions for testing data
+
+```{r}
+wh_test_pred <- predict(wh_fit, wh_test) %>%
+  bind_cols(wh_test %>% select(salary, gender))
+
+wh_test_pred
+```
+
+
+
+##### Evaluate performance on testing data
+
+- RMSE of model fit to testing data
+
+```{r}
+rmse(wh_test_pred, truth = salary, estimate = .pred)
+```
+
+- $R^2$ of model fit to testing data
+
+```{r}
+rsq(wh_test_pred, truth = salary, estimate = .pred)
+```
+
+
+
+##### Training vs. testing
+
+
+
+```{r echo=FALSE}
+rmse_train_wh <- rmse(wh_train_pred, truth = salary, estimate = .pred) %>% 
+  pull(.estimate) %>%
+  round(3)
+
+rsq_train_wh <- rsq(wh_train_pred, truth = salary, estimate = .pred) %>% 
+  pull(.estimate) %>%
+  round(3)
+
+rmse_test_wh <- rmse(wh_test_pred, truth = salary, estimate = .pred) %>% 
+  pull(.estimate) %>%
+  round(3)
+
+rsq_test_wh <- rsq(wh_test_pred, truth = salary, estimate = .pred) %>% 
+  pull(.estimate) %>%
+  round(3)
+
+tibble(
+  data      = c(rep("train", 2), rep("test", 2)),
+  estimate  = c(rmse_train_wh, rsq_train_wh, rmse_test_wh, rsq_test_wh),
+  metric    = c("RMSE", "R-squared", "RMSE", "R-squared")
+) %>%
+  pivot_wider(names_from = data, values_from = estimate) %>%
+  bind_cols(comparison = c("RMSE lower for training", "R-squared higher for training")) %>%
+  kable()
+```
